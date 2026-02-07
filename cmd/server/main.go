@@ -1,13 +1,34 @@
 package main
 
 import (
-	"github.com/rabbitmq/amqp091-go"
 	"fmt"
+	"log"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/pubsub"
+	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/routing"
 )
 
 func main() {
-	connString := "amqp://guest:guest@localhost:5672/"
-	conn := amqp.Dial(connString)
-	defer conn.Close()
+	rabbitURL := "amqp://guest:guest@localhost:5672/"
+	conn, err := amqp.Dial(rabbitURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ch.Close()
 	fmt.Println("Starting Peril server...")
+	err = pubsub.PublishJSON(
+		ch,
+		routing.ExchangePerilDirect,
+		routing.PauseKey,
+		routing.PlayingState{
+			IsPaused: true,
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
