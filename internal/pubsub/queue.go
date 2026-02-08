@@ -1,10 +1,7 @@
 package pubsub
 
 import (
-	"log"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/pubsub"
-	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/routing"
 )
 
 type SimpleQueueType int
@@ -46,7 +43,7 @@ func DeclareAndBind(
 	err = ch.QueueBind(
 		q.Name,
 		key,
-		exclusive,
+		exchange,
 		false,
 		nil,
 	)

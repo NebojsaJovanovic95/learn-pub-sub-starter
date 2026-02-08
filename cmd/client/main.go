@@ -21,7 +21,10 @@ func main() {
 	}
 	defer conn.Close()
 
-	username := gamelogic.ClientWelcome()
+	username, err := gamelogic.ClientWelcome()
+	if err != nil {
+		log.Fatal(err)
+	}
 	
 	queueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
 
