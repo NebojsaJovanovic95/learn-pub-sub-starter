@@ -20,6 +20,13 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
 	}
 }
 
+func handlerMove(gs *gamelogic.GameState) func(mv gamelogic.ArmyMove) {
+	return func(mv gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(mv)
+	}
+}
+
 func main() {
 	rabbitURL := "amqp://guest:guest@localhost:5672/"
 	conn, err := amqp.Dial(rabbitURL)
@@ -55,6 +62,18 @@ func main() {
 		log.Fatal("Failed to subscribe to pause messages:", err)
 	}
 
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username),
+		fmt.Sprintf("%s.*", routing.ArmyMovesPrefix, username),
+		pubsub.Transient,
+		handlerMove(state),
+	)
+	if err != nil {
+		log.Fatal("Failed to subscribe to move messages:", err)
+	}
+
 	fmt.Println("Client running. Press Ctrl+C to exit.")
 
 	// Handle Ctrl+C
@@ -81,9 +100,21 @@ func main() {
 			mv, err := state.CommandMove(words)
 			if err != nil {
 				fmt.Println("Error moving unit:", err)
-			} else {
-				fmt.Printf("Move successful! Moved %d unit(s) to %s\n", len(mv.Units), mv.ToLocation)
+				continue
 			}
+
+			err = pubsub.PublishJSON(
+				ch,
+				routing.ExchangePerilTopic,
+				fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username),
+				mv,
+			)
+			if err != nil {
+				log.Println("Failed to publish move:", err)
+				continue
+			}
+
+			fmt.Println("Move published successfully")
 		case "status":
 			state.CommandStatus()
 		case "help":
