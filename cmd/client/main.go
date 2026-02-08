@@ -22,23 +22,30 @@ func main() {
 	defer conn.Close()
 
 	username, err := gamelogic.ClientWelcome()
-	queueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
-
-	ch, _, err := pubsub.DeclareAndBind(
-		conn,
-		routing.ExchangePerilDirect,
-		queueName,
-		routing.PauseKey,
-		pubsub.Transient,
-	)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer ch.Close()
-
-	fmt.Println("Client running. Press Ctrl+C to exit.")
 
 	state := gamelogic.NewGameState(username)
+
+	queueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		fmt.Sprintf("%s.%s", routing.PauseKey, username),
+		routing.PauseKey,
+		pubsub.Transient,
+		func(ps routing.PlayingState) {
+			state.HandlePause(ps)
+			fmt.Printf("> ")
+		},
+	)
+	if err != nil {
+		log.Fatal("Failed to subscribe to pause messages:", err)
+	}
+
+	fmt.Println("Client running. Press Ctrl+C to exit.")
 
 	// Handle Ctrl+C
 	sig := make(chan os.Signal, 1)
