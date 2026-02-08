@@ -1,7 +1,6 @@
 package pubsub
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 
@@ -9,41 +8,42 @@ import (
 )
 
 func SubscribeJSON[T any](
-    conn *amqp.Connection,
-    exchange,
-    queueName,
-    key string,
-    queueType SimpleQueueType, // an enum to represent "durable" or "transient"
-    handler func(T),
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+	handler func(T),
 ) error {
-	
-	ch, _, err := ch.consume(
-		queueName,
-		"",
-		false,
-		false,
-		false,
-		false,
-		nil,
+	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
+	if err != nil {
+		return err
+	}
+	msgs, err := ch.Consume(
+		q.Name, // queue
+		"",     // consumer name (auto-generated)
+		false,  // auto-ack
+		false,  // exclusive
+		false,  // no-local
+		false,  // no-wait
+		nil,    // args
 	)
 	if err != nil {
 		return err
 	}
 
-	go func () {
+	go func() {
 		for d := range msgs {
-			var val T
-			if err := json.Unmarshal(d.Body, &val); err != nil {
-				log.Println("Failed to unmarshal message:", err)
-				d.Nack(false, false)
+			var payload T
+			if err := json.Unmarshal(d.Body, &payload); err != nil {
+				log.Println("Error unmarshaling message:", err)
+				d.Ack(false)
 				continue
 			}
-
-			handler(val)
-
+			handler(payload)
 			d.Ack(false)
 		}
-	} ()
+	}()
 
 	return nil
 }

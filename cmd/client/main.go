@@ -13,6 +13,13 @@ import (
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
 )
 
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ") // keep the REPL prompt after pause/resume message
+		gs.HandlePause(ps)
+	}
+}
+
 func main() {
 	rabbitURL := "amqp://guest:guest@localhost:5672/"
 	conn, err := amqp.Dial(rabbitURL)
@@ -20,6 +27,12 @@ func main() {
 		log.Fatal(err)
 	}
 	defer conn.Close()
+
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer ch.Close()
 
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
@@ -33,13 +46,10 @@ func main() {
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
-		fmt.Sprintf("%s.%s", routing.PauseKey, username),
+		queueName,
 		routing.PauseKey,
 		pubsub.Transient,
-		func(ps routing.PlayingState) {
-			state.HandlePause(ps)
-			fmt.Printf("> ")
-		},
+		handlerPause(state),
 	)
 	if err != nil {
 		log.Fatal("Failed to subscribe to pause messages:", err)
