@@ -15,23 +15,26 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	ch, err := conn.Channel()
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer ch.Close()
-	fmt.Println("Starting Peril server...")
-	err = pubsub.PublishJSON(
-		ch,
+	defer conn.Close()
+
+	username := gamelogic.ClientWelcome()
+	queueName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
+
+	ch, _, err := pubsub.DeclareAndBind(
+		conn,
 		routing.ExchangePerilDirect,
+		queueName,
 		routing.PauseKey,
-		routing.PlayingState{
-			IsPaused: true,
-		},
+		pubsub.Transient,
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer ch.Close()
+
+	fmt.Println("Client running. Press Ctrl+C to exit.")
+
+	state := gamelogic.NewGameState(username)
 
 	for ;; {
 		words := gamelogic.GetInput()
@@ -40,6 +43,26 @@ func main() {
 		}
 
 		switch words[0] {
+		case "spawn":
+			id, err := state.CommandSpawn(words)
+			if err != nil {
+				fmt.Println("Error spawning unit:", err)
+			} else {
+				fmt.Println("Spawned unit with ID %d\n", err)
+			}
+		case "move":
+			err := state.CommandMove(words)
+			if err != nil {
+				fmt.Println("Error moving unit:", err)
+			} else {
+				fmt.Println("Move successfully!")
+			}
+		case "status":
+			state.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
 		case "pause":
 			fmt.Println("sending pause message...")
 			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
