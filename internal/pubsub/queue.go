@@ -17,7 +17,13 @@ func DeclareAndBind(
 	queueName,
 	key string,
 	queueType SimpleQueueType,
+	deadLetterExchange string,
 ) (*amqp.Channel, amqp.Queue, error) {
+
+	args := amqp.Table{}
+	if deadLetterExchange != "" {
+		args["x-dead-letter-exchange"] = deadLetterExchange
+	}
 
 	ch, err := conn.Channel()
 	if err != nil {
@@ -34,20 +40,20 @@ func DeclareAndBind(
 		autoDelete,
 		exclusive,
 		false,
-		nil,
+		args,
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
 
-	err = ch.QueueBind(
+	if err := ch.QueueBind(
 		q.Name,
 		key,
 		exchange,
 		false,
 		nil,
-	)
-	if err != nil {
+	);
+	err != nil {
 		return nil, amqp.Queue{}, err
 	}
 
