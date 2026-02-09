@@ -7,22 +7,22 @@ import (
 	"os/signal"
 	"syscall"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/pubsub"
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/routing"
-	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) (pubsub.AckType) {
-	return func(ps routing.PlayingState) (pubsub.AckType) {
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.AckType {
+	return func(ps routing.PlayingState) pubsub.AckType {
 		defer fmt.Print("> ")
 		gs.HandlePause(ps)
 		return pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(mv gamelogic.ArmyMove) (pubsub.AckType) {
-	return func(mv gamelogic.ArmyMove) (pubsub.AckType) {
+func handlerMove(gs *gamelogic.GameState) func(mv gamelogic.ArmyMove) pubsub.AckType {
+	return func(mv gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Print("> ")
 		outcome := gs.HandleMove(mv)
 		switch outcome {

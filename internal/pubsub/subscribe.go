@@ -23,7 +23,7 @@ func SubscribeJSON[T any](
 	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
 	handler func(T) AckType,
 ) error {
-	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType, "dead_letter_exchange")
+	ch, q, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
 		return err
 	}
