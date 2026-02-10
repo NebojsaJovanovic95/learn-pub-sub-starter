@@ -89,6 +89,9 @@ func Subscribe[T any](
 	if err != nil {
 		return err
 	}
+	if err := ch.Qos(10, 0, true); err != nil {
+		return err
+	}
 	msgs, err := ch.Consume(
 		q.Name, // queue
 		"",     // consumer name (auto-generated)
