@@ -30,6 +30,11 @@ type RecognitionOfWar struct {
 	Defender Player
 }
 
+type GameLog struct {
+	Username string
+	Message  string
+}
+
 type Location string
 
 func getAllRanks() map[UnitRank]struct{} {
