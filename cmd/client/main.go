@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
@@ -81,6 +82,31 @@ func handleWar(gs *gamelogic.GameState, ch *amqp.Channel) func(dw gamelogic.Reco
 		}
 		return pubsub.Ack
 	}
+}
+
+func runSpam(words []string, ch *amqp.Channel, username string) error {
+	if len(words) != 2 {
+		return fmt.Errorf("usage: spam <count>")
+	}
+
+	count, err := strconv.Atoi(words[1])
+	if err != nil || count <= 0 {
+		return fmt.Errorf("count must be a positive number")
+	}
+
+	for i := 0; i < count; i++ {
+		if err := pubsub.PublishGob(
+			ch,
+			routing.ExchangePerilTopic,
+			fmt.Sprintf("game_logs.%s", username),
+			gamelogic.GetMaliciousLog(),
+		); err != nil {
+			return err
+		}
+		fmt.Println("spam")
+	}
+
+	return nil
 }
 
 func main() {
@@ -188,7 +214,10 @@ func main() {
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
-			fmt.Println("Spamming not allowed yet!")
+			if err := runSpam(words, ch, username); err != nil {
+				log.Fatal(err)
+				continue
+			}
 		case "pause":
 			fmt.Println("Sending pause message...")
 			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
