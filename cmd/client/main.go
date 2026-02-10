@@ -21,16 +21,49 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(mv gamelogic.ArmyMove) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState, publishCh *amqp.Channel) func(mv gamelogic.ArmyMove) pubsub.AckType {
 	return func(mv gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Print("> ")
 		outcome := gs.HandleMove(mv)
 		switch outcome {
-		case gamelogic.MoveOutComeSafe, gamelogic.MoveOutcomeMakeWar:
+		case gamelogic.MoveOutComeSafe:
 			return pubsub.Ack
+		case gamelogic.MoveOutcomeMakeWar:
+			war := gamelogic.RecognitionOfWar{
+				Attacker: mv.Player,
+				Defender: gs.GetPlayerSnap(),
+			}
+			key := fmt.Sprintf("%s.%s", routing.WarRecognitionsPrefix, mv.Player)
+			if err := pubsub.PublishJSON(publishCh, routing.ExchangePerilTopic, key, war); err != nil {
+				fmt.Println("failed to publish war:", err)
+				return pubsub.NackRequeue
+			}
+			return pubsub.NackRequeue
 		case gamelogic.MoveOutcomeSamePlayer:
 			return pubsub.NackDiscard
 		default:
+			return pubsub.NackDiscard
+		}
+	}
+}
+
+func handleWar(gs *gamelogic.GameState) func(dw gamelogic.RecognitionOfWar) pubsub.AckType {
+	return func(dw gamelogic.RecognitionOfWar) pubsub.AckType {
+		defer fmt.Print("> ")
+		warOutcome, _, _ := gs.HandleWar(dw)
+		switch warOutcome {
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		case gamelogic.WarOutcomeOpponentWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeYouWon:
+			return pubsub.Ack
+		case gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		default:
+			fmt.Println("err: unknown war outcome")
 			return pubsub.NackDiscard
 		}
 	}
@@ -75,12 +108,24 @@ func main() {
 		conn,
 		routing.ExchangePerilTopic,
 		fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username),
-		fmt.Sprintf("%s.*", routing.ArmyMovesPrefix, username),
+		fmt.Sprintf("%s.*", routing.ArmyMovesPrefix),
 		pubsub.Transient,
-		handlerMove(state),
+		handlerMove(state, ch),
 	)
 	if err != nil {
 		log.Fatal("Failed to subscribe to move messages:", err)
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+".*",
+		pubsub.Durable,
+		handleWar(state),
+	)
+	if err != nil {
+		log.Fatal("could not subscribe to war declaration:", err)
 	}
 
 	fmt.Println("Client running. Press Ctrl+C to exit.")
