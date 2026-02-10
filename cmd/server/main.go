@@ -4,82 +4,91 @@ import (
 	"fmt"
 	"log"
 
-	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/pubsub"
 	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/routing"
-	"github.com/NebojsaJovanovic95/learn-pub-sub-starter/internal/gamelogic"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+func handlerLogs() func(gamelog routing.GameLog) pubsub.AckType {
+	return func(gamelog routing.GameLog) pubsub.AckType {
+		defer fmt.Print("> ")
+
+		err := gamelogic.WriteLog(gamelog)
+		if err != nil {
+			fmt.Printf("error writing log: %v\n", err)
+			return pubsub.NackRequeue
+		}
+		return pubsub.Ack
+	}
+}
+
 func main() {
-	rabbitURL := "amqp://guest:guest@localhost:5672/"
-	conn, err := amqp.Dial(rabbitURL)
+	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
+
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("could not connect to RabbitMQ: %v", err)
 	}
 	defer conn.Close()
+	fmt.Println("Peril game server connected to RabbitMQ!")
 
-	ch, err := conn.Channel()
+	publishCh, err := conn.Channel()
 	if err != nil {
-		log.Fatal(err)
-	}
-	defer ch.Close()
-
-	err = ch.ExchangeDeclare(
-		routing.ExchangePerilTopic,
-		"topic",
-		true,  // durable
-		false, // autoDelete
-		false, // internal
-		false, // noWait
-		nil,
-	)
-	if err != nil {
-		log.Fatal("Failed to declare peril_topic exchange:", err)
+		log.Fatalf("could not create channel: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
 		routing.ExchangePerilTopic,
-		"game_logs",
-		routing.GameLogSlug + ".*",
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
 		pubsub.Durable,
+		handlerLogs(),
 	)
 	if err != nil {
-		log.Fatal("Failed to declare/bind game_logs queue:", err)
+		log.Fatalf("could not subscribe to pause: %v", err)
 	}
 
-	fmt.Println("Starting Peril server...")
 	gamelogic.PrintServerHelp()
 
-	// REPL loop
 	for {
 		words := gamelogic.GetInput()
 		if len(words) == 0 {
 			continue
 		}
-
 		switch words[0] {
 		case "pause":
-			fmt.Println("Sending pause message...")
-			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
-				IsPaused: true,
-			})
+			fmt.Println("Publishing paused game state")
+			err = pubsub.PublishJSON(
+				publishCh,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: true,
+				},
+			)
 			if err != nil {
-				log.Println("Error publishing pause:", err)
+				log.Printf("could not publish time: %v", err)
 			}
 		case "resume":
-			fmt.Println("Sending resume message...")
-			err := pubsub.PublishJSON(ch, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{
-				IsPaused: false,
-			})
+			fmt.Println("Publishing resumes game state")
+			err = pubsub.PublishJSON(
+				publishCh,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: false,
+				},
+			)
 			if err != nil {
-				log.Println("Error publishing resume:", err)
+				log.Printf("could not publish time: %v", err)
 			}
 		case "quit":
-			fmt.Println("Exiting server...")
+			log.Println("goodbye")
 			return
 		default:
-			fmt.Println("Unknown command:", words[0])
+			fmt.Println("unknown command")
 		}
 	}
 }
